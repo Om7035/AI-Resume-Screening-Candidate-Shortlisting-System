@@ -4,7 +4,7 @@ A beginner-friendly, production-style Python project that:
 
 - Parses multiple PDF resumes from a folder (using **PyPDF**)
 - Reads a job description from a text file or CLI input
-- Scores each resume against the job description using the **Gemini API** (via `requests`)
+- Scores each resume against the job description using an LLM API (**OpenAI** or **Gemini**, via `requests`)
 - Ranks candidates and builds a shortlist
 - Saves results to JSON files
 - Optionally sends shortlist notification emails via Gmail SMTP
@@ -39,7 +39,7 @@ A beginner-friendly, production-style Python project that:
 
 1. `main.py` loads configuration from environment variables.
 2. `parser.py` scans the resume folder and extracts PDF text.
-3. `scorer.py` sends resume + JD to Gemini and expects strict JSON: `{"score": <0-100>, "reason": "..."}`.
+3. `scorer.py` sends resume + JD to OpenAI/Gemini and expects strict JSON: `{"score": <0-100>, "reason": "..."}`.
 4. If LLM API call fails (no key/network), a fallback keyword-overlap scorer is used.
 5. Candidates are ranked by score and top-N are shortlisted.
 6. Results are saved:
@@ -81,8 +81,12 @@ cp .env.example .env
 
 Required fields:
 
-- `LLM_PROVIDER=gemini`
-- `GEMINI_API_KEY=...`
+- For OpenAI:
+  - `LLM_PROVIDER=openai`
+  - `OPENAI_API_KEY=...`
+- For Gemini:
+  - `LLM_PROVIDER=gemini`
+  - `GEMINI_API_KEY=...`
 - For email sending:
   - `EMAIL_USERNAME=your_gmail@gmail.com`
   - `EMAIL_PASSWORD=your_gmail_app_password`
@@ -141,7 +145,7 @@ python main.py --send-email
 ## Notes for Beginners
 
 - Start without email: run `python main.py` first.
-- If Gemini API key is missing, scoring still works via fallback mode.
+- If API key is missing, scoring still works via fallback mode.
 - Keep your `.env` private (never commit real keys/passwords).
 - Add your own resumes in `sample_data/resumes/` as `.pdf` files.
 

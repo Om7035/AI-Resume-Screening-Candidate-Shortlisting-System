@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResumeScorer:
-    """Scores resumes against a job description using Gemini API."""
+    """Scores resumes against a job description using OpenAI or Gemini APIs."""
 
     def __init__(self, provider: str | None = None) -> None:
         self.provider = (provider or settings.llm_provider).lower()
@@ -25,12 +25,13 @@ class ResumeScorer:
         prompt = self._build_prompt(resume_text=resume_text, job_description=job_description)
 
         try:
-            if self.provider != "gemini":
-                raise ValueError(
-                    f"Unsupported provider '{self.provider}'. Set LLM_PROVIDER=gemini for free-tier usage."
-                )
+            if self.provider == "openai":
+                raw_content = self._call_openai(prompt)
+            elif self.provider == "gemini":
+                raw_content = self._call_gemini(prompt)
+            else:
+                raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
-            raw_content = self._call_gemini(prompt)
             parsed = self._parse_llm_json(raw_content)
             score = int(max(0, min(100, parsed.get("score", 0))))
             reason = str(parsed.get("reason", "No reason provided by model.")).strip()
@@ -42,12 +43,11 @@ class ResumeScorer:
 
     @staticmethod
     def _build_prompt(resume_text: str, job_description: str) -> str:
-        """Create the prompt sent to Gemini."""
+        """Create the prompt sent to the LLM."""
         return f"""
 You are an AI recruiter.
 Compare the candidate resume with the job description.
-Return STRICT JSON only:
-{{"score": <integer between 0 and 100>, "reason": "<short explanation>"}}
+Return STRICT JSON only with keys: score (0-100 integer), reason (short string).
 
 JOB DESCRIPTION:
 {job_description[:6000]}
@@ -59,12 +59,41 @@ RESUME:
     @staticmethod
     def _parse_llm_json(raw_content: str) -> dict[str, Any]:
         """Parse JSON object from model output (robustly)."""
-        content = raw_content.strip()
-        content = re.sub(r"^```json\s*|```$", "", content, flags=re.IGNORECASE | re.MULTILINE).strip()
+        raw_content = raw_content.strip()
 
-        json_match = re.search(r"\{.*\}", content, flags=re.DOTALL)
-        candidate = json_match.group(0) if json_match else content
+        json_match = re.search(r"\{.*\}", raw_content, flags=re.DOTALL)
+        candidate = json_match.group(0) if json_match else raw_content
         return json.loads(candidate)
+
+    def _call_openai(self, prompt: str) -> str:
+        """Call OpenAI Chat Completions API."""
+        if not settings.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY is missing")
+
+        url = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": settings.openai_model,
+            "messages": [
+                {"role": "system", "content": "You are a strict JSON generator."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+        }
+
+        logger.debug("Calling OpenAI API model=%s", settings.openai_model)
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=settings.request_timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
 
     def _call_gemini(self, prompt: str) -> str:
         """Call Gemini generateContent API."""
@@ -75,10 +104,7 @@ RESUME:
         url = f"{settings.gemini_base_url.rstrip('/')}/{model}:generateContent?key={settings.gemini_api_key}"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            },
+            "generationConfig": {"temperature": 0.2},
         }
 
         logger.debug("Calling Gemini API model=%s", model)

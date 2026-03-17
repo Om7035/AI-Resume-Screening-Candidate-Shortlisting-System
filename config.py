@@ -22,8 +22,11 @@ class Settings:
     output_dir: Path = base_dir / "output"
     job_description_file: Path = base_dir / "sample_data" / "job_description.txt"
 
-    # LLM settings (Gemini default; free-tier friendly)
-    llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").lower()
+    # LLM settings
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
